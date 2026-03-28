@@ -119,7 +119,7 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
             "Tracking Number",
             "Qty",
             "CBM",
-            "CBM x $235",
+            "CBM x $240",
             "Amount ($)"
         ]
 
