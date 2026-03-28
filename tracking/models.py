@@ -7,7 +7,7 @@ from datetime import datetime
 # CONSTANTS
 # ==========================
 
-RATE_PER_CBM = Decimal("235.00")
+RATE_PER_CBM = Decimal("240.00")
 MIN_CBM = Decimal("0.005")
 MIN_CHARGE = Decimal("2.00")
 
