@@ -11,7 +11,6 @@ from PIL import Image
 import re
 
 
-RATE_PER_CBM = Decimal("240.00")
 MIN_CBM = Decimal("0.005")
 MIN_CHARGE = Decimal("2.00")
 
@@ -38,6 +37,7 @@ class PackageAdmin(admin.ModelAdmin):
         "customer_phone",
         "quantity",
         "cbm",
+        "goods_type",  # 🔥 ADDED
         "display_total_cbm",
         "display_final_amount",
         "current_status",
@@ -53,6 +53,7 @@ class PackageAdmin(admin.ModelAdmin):
     list_filter = (
         "current_status",
         "date_received",
+        "goods_type",  # 🔥 ADDED
     )
 
     readonly_fields = (
@@ -71,6 +72,7 @@ class PackageAdmin(admin.ModelAdmin):
                 "customer_phone",
                 "cbm",
                 "quantity",
+                "goods_type",  # 🔥 FIXED (THIS WAS YOUR MAIN ISSUE)
                 "current_status",
                 "current_location",
                 "date_received",
@@ -103,7 +105,7 @@ class PackageAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     # =====================================================
-    # BULK IMPORT VIEW (YIWU FORMAT LOCKED)
+    # BULK IMPORT VIEW
     # =====================================================
 
     def bulk_import_view(self, request):
@@ -133,39 +135,31 @@ class PackageAdmin(admin.ModelAdmin):
                     if len(tokens) < 6:
                         continue
 
-                    # ---- 1️⃣ Tracking must be LAST token ----
-                    last_token = tokens[-1]
-                    tracking = re.sub(r"[^\d]", "", last_token)
-
+                    tracking = re.sub(r"[^\d]", "", tokens[-1])
                     if len(tracking) < 10:
-                        continue  # skip headers and bad lines
+                        continue
 
-                    # ---- 2️⃣ Extract decimals BEFORE tracking ----
-                    decimals = []
-                    for token in tokens[:-1]:  # ignore tracking token
-                        if re.match(r"\d+\.\d+", token):
-                            decimals.append(token)
+                    decimals = [
+                        t for t in tokens[:-1]
+                        if re.match(r"\d+\.\d+", t)
+                    ]
 
-                    if len(decimals) < 1:
+                    if not decimals:
                         continue
 
                     try:
-                        # last decimal before tracking
                         cbm = Decimal(decimals[-1])
                     except InvalidOperation:
                         continue
 
-                    # ---- 3️⃣ Quantity = FIRST integer in row ----
-                    quantity = None
-                    for token in tokens:
-                        if token.isdigit():
-                            quantity = int(token)
-                            break
+                    quantity = next(
+                        (int(t) for t in tokens if t.isdigit()),
+                        None
+                    )
 
-                    if quantity is None:
+                    if not quantity:
                         continue
 
-                    # ---- 4️⃣ Save ----
                     if not Package.objects.filter(tracking_number=tracking).exists():
                         Package.objects.create(
                             tracking_number=tracking,
@@ -188,40 +182,53 @@ class PackageAdmin(admin.ModelAdmin):
         else:
             form = BulkImportForm()
 
-        context = dict(
-            self.admin_site.each_context(request),
-            form=form,
-            title="Bulk Import Packages from PNG",
+        return render(
+            request,
+            "admin/bulk_import.html",
+            {
+                **self.admin_site.each_context(request),
+                "form": form,
+                "title": "Bulk Import Packages from PNG",
+            },
         )
-
-        return render(request, "admin/bulk_import.html", context)
 
     # =====================================================
     # DISPLAY METHODS
     # =====================================================
 
     def display_rate(self, obj):
-        return f"${RATE_PER_CBM} per CBM"
-    display_rate.short_description = "Rate Per CBM"
+        if not obj.pk:
+            return "-"
+
+        total_cbm = obj.total_cbm()
+
+        if obj.goods_type == "SPECIAL":
+            return "$280"
+        elif total_cbm >= Decimal("1"):
+            return "$240"
+        else:
+            return "$245"
+
+    display_rate.short_description = "Rate"
 
     def display_min_cbm(self, obj):
         return MIN_CBM
+
     display_min_cbm.short_description = "Minimum CBM"
 
     def display_min_charge(self, obj):
         return f"${MIN_CHARGE}"
+
     display_min_charge.short_description = "Minimum Charge ($)"
 
     def display_total_cbm(self, obj):
-        if obj.pk:
-            return obj.total_cbm()
-        return "-"
+        return obj.total_cbm() if obj.pk else "-"
+
     display_total_cbm.short_description = "Total CBM"
 
     def display_final_amount(self, obj):
-        if obj.pk:
-            return obj.final_amount()
-        return "-"
+        return obj.final_amount() if obj.pk else "-"
+
     display_final_amount.short_description = "Final Charge ($)"
 
 
@@ -274,8 +281,10 @@ class InvoiceAdmin(admin.ModelAdmin):
 
     def mark_as_paid(self, request, queryset):
         queryset.update(status="PAID")
+
     mark_as_paid.short_description = "Mark selected invoices as PAID"
 
     def mark_as_unpaid(self, request, queryset):
         queryset.update(status="UNPAID")
+
     mark_as_unpaid.short_description = "Mark selected invoices as UNPAID"

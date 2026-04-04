@@ -27,7 +27,6 @@ USER_STATE = {}
 # ===============================
 # MENU KEYBOARD
 # ===============================
-
 def main_menu_keyboard():
     keyboard = [
         ["📦 Track"],
@@ -39,7 +38,6 @@ def main_menu_keyboard():
 # ===============================
 # SHOW MENU
 # ===============================
-
 async def show_menu(update: Update):
     USER_STATE.pop(update.effective_chat.id, None)
 
@@ -53,22 +51,15 @@ async def show_menu(update: Update):
 # ===============================
 # MAIN HANDLER
 # ===============================
-
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     text = update.message.text.strip()
 
-    # ==========================
-    # TRACK BUTTON
-    # ==========================
     if text == "📦 Track":
         USER_STATE[chat_id] = "TRACK"
         await update.message.reply_text("Please send the tracking number.")
         return
 
-    # ==========================
-    # GENERATE INVOICE BUTTON
-    # ==========================
     if text == "🧾 Generate Invoice":
         USER_STATE[chat_id] = "INVOICE"
         await update.message.reply_text(
@@ -172,13 +163,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             {
                 "tracking_number": pkg.tracking_number,
                 "quantity": pkg.quantity,
-                "cbm": pkg.total_cbm(),
-                "amount": pkg.final_amount(),
+                "cbm": pkg.cbm,
+                "goods_type": pkg.goods_type,
             }
             for pkg in packages
         ]
 
-        # ✅ MEMORY-BASED PDF (NO TEMP FILE)
         pdf_bytes = generate_invoice(
             invoice,
             start_date,
@@ -193,16 +183,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         USER_STATE.pop(chat_id, None)
         return
 
-    # ==========================
-    # DEFAULT
-    # ==========================
     await show_menu(update)
+
+
+# ===============================
+# RESET TELEGRAM SESSION (🔥 FIX)
+# ===============================
+async def reset_bot(application):
+    await application.bot.delete_webhook(drop_pending_updates=True)
 
 
 # ===============================
 # DJANGO COMMAND
 # ===============================
-
 class Command(BaseCommand):
     help = "Run Payless Telegram Bot"
 
@@ -217,6 +210,9 @@ class Command(BaseCommand):
             return
 
         app = ApplicationBuilder().token(token).build()
+
+        # 🔥 FIX: always reset previous sessions
+        app.post_init = reset_bot
 
         app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)

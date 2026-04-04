@@ -6,21 +6,36 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 
-
-RATE_PER_CBM = Decimal("240.00")
 MIN_CBM = Decimal("0.005")
 MIN_CHARGE = Decimal("2.00")
+
+
+# ===============================
+# PRICING FUNCTION
+# ===============================
+def get_rate(total_cbm, goods_type):
+    if goods_type == 'SPECIAL':
+        return Decimal("280.00")
+
+    if total_cbm >= Decimal("1.0"):
+        return Decimal("240.00")
+    else:
+        return Decimal("245.00")
 
 
 def money(x: Decimal) -> str:
     return f"${x.quantize(Decimal('0.01'))}"
 
 
-def calc_line_amount(total_cbm: Decimal) -> Decimal:
+# ===============================
+# CALCULATION
+# ===============================
+def calc_line_amount(total_cbm: Decimal, goods_type: str) -> Decimal:
     if total_cbm < MIN_CBM:
         total_cbm = MIN_CBM
 
-    amount = (total_cbm * RATE_PER_CBM).quantize(Decimal("0.01"))
+    rate = get_rate(total_cbm, goods_type)
+    amount = (total_cbm * rate).quantize(Decimal("0.01"))
 
     if amount < MIN_CHARGE:
         amount = MIN_CHARGE
@@ -43,10 +58,11 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
 
     col_positions = [
         table_left,
-        table_left + 2.1 * inch,
-        table_left + 2.8 * inch,
-        table_left + 3.7 * inch,
-        table_left + 4.7 * inch,
+        table_left + 1.8 * inch,
+        table_left + 2.6 * inch,
+        table_left + 3.6 * inch,
+        table_left + 4.6 * inch,
+        table_left + 5.6 * inch,
         table_right
     ]
 
@@ -66,13 +82,12 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
         c.restoreState()
 
     # ===============================
-    # PAGE HEADER
+    # HEADER
     # ===============================
     def draw_page_header():
         y_header = height - 1.2 * inch
 
         c.setFont("Helvetica-Bold", 16)
-        c.setFillColorRGB(0, 0, 0)
         c.drawString(1 * inch, y_header, "PAYLESS LOGISTICS")
 
         logo_path = os.path.join(
@@ -82,15 +97,12 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
         )
 
         if os.path.exists(logo_path):
-            logo_width = 2.2 * inch
-            logo_height = 1.4 * inch
-
             c.drawImage(
                 ImageReader(logo_path),
                 width - 2.7 * inch,
-                y_header - (logo_height / 2) + 0.2 * inch,
-                width=logo_width,
-                height=logo_height,
+                y_header - 0.5 * inch,
+                width=2.2 * inch,
+                height=1.4 * inch,
                 preserveAspectRatio=True,
                 mask="auto",
             )
@@ -113,13 +125,14 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
         )
 
         c.setFillColorRGB(0, 0, 0)
-        c.setFont("Helvetica-Bold", 12)
+        c.setFont("Helvetica-Bold", 11)
 
         headers = [
-            "Tracking Number",
+            "Tracking",
             "Qty",
             "CBM",
-            "CBM x $240",
+            "Type",
+            "Rate",
             "Amount ($)"
         ]
 
@@ -133,12 +146,12 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
         return current_y - row_height
 
     # ===============================
-    # FIRST PAGE
+    # START PAGE
     # ===============================
     draw_watermark()
     y = draw_page_header()
 
-    c.setFont("Helvetica-Bold", 12)
+    c.setFont("Helvetica-Bold", 11)
     c.drawString(
         table_left,
         y,
@@ -149,76 +162,54 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
     c.drawString(
         table_left,
         y,
-        f"Date Received (China Warehouse): {start_date.strftime('%B %d, %Y')}"
+        f"Date Received: {start_date.strftime('%B %d, %Y')}"
     )
     y -= 0.5 * inch
 
     y = draw_table_header(y)
-    table_top = y + row_height
+
     c.setFont("Helvetica", 10)
 
     # ===============================
-    # TABLE ROWS
+    # ROWS
     # ===============================
     for p in packages:
 
         if y < bottom_margin:
-            # Draw border before breaking page
-            table_bottom = y
-            c.rect(
-                table_left,
-                table_bottom,
-                table_right - table_left,
-                table_top - table_bottom
-            )
-            for x in col_positions[1:-1]:
-                c.line(x, table_bottom, x, table_top)
-
             c.showPage()
             draw_watermark()
             y = draw_page_header()
             y = draw_table_header(y)
-            table_top = y + row_height
-            c.setFont("Helvetica", 12)
 
         tracking = p["tracking_number"]
         quantity = p["quantity"]
         cbm = p["cbm"]
+        goods_type = p["goods_type"]
 
-        amount = calc_line_amount(cbm)
-        cbm_value = (cbm * RATE_PER_CBM).quantize(Decimal("0.01"))
+        total_cbm_item = (cbm * quantity).quantize(Decimal("0.001"))
+        rate = get_rate(total_cbm_item, goods_type)
+        amount = calc_line_amount(total_cbm_item, goods_type)
 
-        total_cbm += cbm
+        total_cbm += total_cbm_item
         total_amount += amount
 
-        c.drawString(col_positions[0] + 5,
-                     y - 0.22 * inch, str(tracking))
-        c.drawString(col_positions[1] + 5,
-                     y - 0.22 * inch, str(quantity))
-        c.drawString(col_positions[2] + 5,
-                     y - 0.22 * inch, str(cbm))
+        c.drawString(col_positions[0] + 5, y - 0.22 * inch, str(tracking))
+        c.drawString(col_positions[1] + 5, y - 0.22 * inch, str(quantity))
+        c.drawString(col_positions[2] + 5, y - 0.22 * inch, str(total_cbm_item))
 
-        c.drawRightString(col_positions[4] - 5,
-                          y - 0.22 * inch, money(cbm_value))
+        # CLEAN GOODS TYPE DISPLAY
+        c.drawString(col_positions[3] + 5, y - 0.22 * inch,
+                     goods_type.capitalize())
+
         c.drawRightString(col_positions[5] - 5,
+                          y - 0.22 * inch, f"${rate:.2f}")
+        c.drawRightString(col_positions[6] - 5,
                           y - 0.22 * inch, money(amount))
 
         c.line(table_left, y - row_height,
                table_right, y - row_height)
 
         y -= row_height
-
-    # Draw final table border
-    table_bottom = y
-    c.rect(
-        table_left,
-        table_bottom,
-        table_right - table_left,
-        table_top - table_bottom
-    )
-
-    for x in col_positions[1:-1]:
-        c.line(x, table_bottom, x, table_top)
 
     # ===============================
     # TOTALS
@@ -231,52 +222,32 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
     c.drawString(
         table_left,
         y,
-        f"Total CBM {total_cbm.quantize(Decimal('0.001'))}"
+        f"Total CBM: {total_cbm.quantize(Decimal('0.001'))}"
     )
 
     c.drawRightString(
         table_right,
         y,
-        f"Total {money(total_amount)}"
+        f"Total: {money(total_amount)}"
     )
 
     c.setFillColorRGB(0, 0, 0)
     y -= 0.6 * inch
 
-    # ETA
     eta_date = start_date + timedelta(days=int(transit_days))
-    c.setFont("Helvetica-Bold", 12)
     c.drawString(
         table_left,
         y,
-        f"Estimated Arrival Date: {eta_date.strftime('%d %B, %Y')}"
+        f"Estimated Arrival: {eta_date.strftime('%d %B, %Y')}"
     )
 
     y -= 0.5 * inch
 
-    # NOTE
     c.setFillColorRGB(1, 0, 0)
     c.drawString(
         table_left,
         y,
-        "Note: Minimum CBM is 0.005 | Minimum Charge is $2"
-    )
-
-    c.setFillColorRGB(0, 0, 0)
-    y -= 0.5 * inch
-
-    # FINAL PARAGRAPH
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(
-        table_left,
-        y,
-        "Please note, shipping fee will only be paid when your goods arrives in our"
-    )
-    y -= 0.25 * inch
-    c.drawString(
-        table_left,
-        y,
-        "Ghana warehouse and scheduled for delivery or pick up. CEDIS ONLY."
+        "Minimum CBM: 0.005 | Minimum Charge: $2"
     )
 
     c.showPage()
