@@ -37,7 +37,7 @@ class PackageAdmin(admin.ModelAdmin):
         "customer_phone",
         "quantity",
         "cbm",
-        "goods_type",  # 🔥 ADDED
+        "goods_type",
         "display_total_cbm",
         "display_final_amount",
         "current_status",
@@ -53,7 +53,7 @@ class PackageAdmin(admin.ModelAdmin):
     list_filter = (
         "current_status",
         "date_received",
-        "goods_type",  # 🔥 ADDED
+        "goods_type",
     )
 
     readonly_fields = (
@@ -72,7 +72,7 @@ class PackageAdmin(admin.ModelAdmin):
                 "customer_phone",
                 "cbm",
                 "quantity",
-                "goods_type",  # 🔥 FIXED (THIS WAS YOUR MAIN ISSUE)
+                "goods_type",
                 "current_status",
                 "current_location",
                 "date_received",
@@ -198,16 +198,17 @@ class PackageAdmin(admin.ModelAdmin):
 
     def display_rate(self, obj):
         if not obj.pk:
-            return "-"
+            return "Fill CBM & Goods Type → Save"
 
         total_cbm = obj.total_cbm()
 
         if obj.goods_type == "SPECIAL":
-            return "$280"
-        elif total_cbm >= Decimal("1"):
-            return "$240"
+            return "$280 per CBM"
+
+        if total_cbm >= Decimal("1"):
+            return "$240 per CBM"
         else:
-            return "$245"
+            return "$245 per CBM"
 
     display_rate.short_description = "Rate"
 
@@ -227,7 +228,10 @@ class PackageAdmin(admin.ModelAdmin):
     display_total_cbm.short_description = "Total CBM"
 
     def display_final_amount(self, obj):
-        return obj.final_amount() if obj.pk else "-"
+        if not obj.pk:
+            return "Save to calculate"
+
+        return f"${obj.final_amount()}"
 
     display_final_amount.short_description = "Final Charge ($)"
 
