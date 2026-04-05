@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 from decimal import Decimal
 from dotenv import load_dotenv
 
@@ -46,11 +46,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     text = update.message.text.strip()
 
+    # ==========================
+    # TRACK BUTTON
+    # ==========================
     if text == "📦 Track":
         USER_STATE[chat_id] = "TRACK"
         await update.message.reply_text("Please send the tracking number.")
         return
 
+    # ==========================
+    # GENERATE INVOICE BUTTON
+    # ==========================
     if text == "🧾 Generate Invoice":
         USER_STATE[chat_id] = "INVOICE"
         await update.message.reply_text(
@@ -103,20 +109,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # ✅ CORRECT 5-DAY WINDOW
+        # ✅ KEEP ORIGINAL DATE LOGIC (DO NOT CHANGE)
         start_date = invoice_date
-        end_date = start_date + timedelta(days=4)
-
-        # ✅ CORRECT QUERY (FIXED PROPERLY)
-        start_datetime = datetime.combine(start_date, time.min)
-        end_datetime = datetime.combine(end_date, time.max)
+        end_date = invoice_date + timedelta(days=5)
 
         packages = await sync_to_async(list)(
             Package.objects.filter(
                 customer_phone=phone,
-                date_received__gte=start_datetime,
-                date_received__lte=end_datetime
-            ).order_by("date_received")
+                date_received__range=(start_date, end_date)
+            )
         )
 
         if not packages:
@@ -156,12 +157,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 amount=pkg.final_amount(),
             )
 
+        # ✅ FIXED FOR NEW INVOICE SYSTEM
         package_dicts = [
             {
                 "tracking_number": pkg.tracking_number,
                 "quantity": pkg.quantity,
-                "cbm": pkg.cbm,
-                "goods_type": pkg.goods_type,
+                "cbm": pkg.cbm,              # per unit CBM
+                "goods_type": pkg.goods_type,  # NEW FIELD
             }
             for pkg in packages
         ]
@@ -183,10 +185,6 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_menu(update)
 
 
-async def reset_bot(application):
-    await application.bot.delete_webhook(drop_pending_updates=True)
-
-
 class Command(BaseCommand):
     help = "Run Payless Telegram Bot"
 
@@ -201,8 +199,6 @@ class Command(BaseCommand):
             return
 
         app = ApplicationBuilder().token(token).build()
-
-        app.post_init = reset_bot
 
         app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text)
