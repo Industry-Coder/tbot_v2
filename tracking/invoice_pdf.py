@@ -6,15 +6,22 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 
+
 MIN_CBM = Decimal("0.005")
 MIN_CHARGE = Decimal("2.00")
 
 
+def money(x: Decimal) -> str:
+    return f"${x.quantize(Decimal('0.01'))}"
+
+
 # ===============================
-# PRICING FUNCTION
+# RATE LOGIC
 # ===============================
-def get_rate(total_cbm, goods_type):
-    if goods_type == 'SPECIAL':
+def get_rate(total_cbm: Decimal, goods_type: str) -> Decimal:
+    goods_type = goods_type.upper()
+
+    if goods_type == "SPECIAL":
         return Decimal("280.00")
 
     if total_cbm >= Decimal("1.0"):
@@ -23,26 +30,18 @@ def get_rate(total_cbm, goods_type):
         return Decimal("245.00")
 
 
-def money(x: Decimal) -> str:
-    return f"${x.quantize(Decimal('0.01'))}"
-
-
-# ===============================
-# CALCULATION
-# ===============================
 def calc_line_amount(total_cbm: Decimal, goods_type: str) -> Decimal:
-    if total_cbm < MIN_CBM:
-        total_cbm = MIN_CBM
+    chargeable_cbm = max(total_cbm, MIN_CBM)
+    rate = get_rate(chargeable_cbm, goods_type)
 
-    rate = get_rate(total_cbm, goods_type)
-    amount = (total_cbm * rate).quantize(Decimal("0.01"))
+    amount = (chargeable_cbm * rate).quantize(Decimal("0.01"))
 
-    if amount < MIN_CHARGE:
-        amount = MIN_CHARGE
-
-    return amount
+    return max(amount, MIN_CHARGE)
 
 
+# ===============================
+# MAIN FUNCTION
+# ===============================
 def generate_invoice(invoice, start_date, packages, transit_days=50):
 
     from io import BytesIO
@@ -58,11 +57,10 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
 
     col_positions = [
         table_left,
-        table_left + 1.8 * inch,
-        table_left + 2.6 * inch,
-        table_left + 3.6 * inch,
-        table_left + 4.6 * inch,
-        table_left + 5.6 * inch,
+        table_left + 2.1 * inch,
+        table_left + 2.8 * inch,
+        table_left + 3.7 * inch,
+        table_left + 4.7 * inch,
         table_right
     ]
 
@@ -124,15 +122,13 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
             stroke=0
         )
 
-        c.setFillColorRGB(0, 0, 0)
-        c.setFont("Helvetica-Bold", 11)
+        c.setFont("Helvetica-Bold", 12)
 
         headers = [
-            "Tracking",
+            "Tracking Number",
             "Qty",
             "CBM",
-            "Type",
-            "Rate",
+            "CBM x Rate",
             "Amount ($)"
         ]
 
@@ -151,7 +147,7 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
     draw_watermark()
     y = draw_page_header()
 
-    c.setFont("Helvetica-Bold", 11)
+    c.setFont("Helvetica-Bold", 12)
     c.drawString(
         table_left,
         y,
@@ -162,12 +158,12 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
     c.drawString(
         table_left,
         y,
-        f"Date Received: {start_date.strftime('%B %d, %Y')}"
+        f"Date Received (China Warehouse): {start_date.strftime('%B %d, %Y')}"
     )
     y -= 0.5 * inch
 
     y = draw_table_header(y)
-
+    table_top = y + row_height
     c.setFont("Helvetica", 10)
 
     # ===============================
@@ -176,18 +172,33 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
     for p in packages:
 
         if y < bottom_margin:
+            # Draw table border before new page
+            table_bottom = y
+            c.rect(
+                table_left,
+                table_bottom,
+                table_right - table_left,
+                table_top - table_bottom
+            )
+            for x in col_positions[1:-1]:
+                c.line(x, table_bottom, x, table_top)
+
             c.showPage()
             draw_watermark()
             y = draw_page_header()
             y = draw_table_header(y)
+            table_top = y + row_height
+            c.setFont("Helvetica", 10)
 
         tracking = p["tracking_number"]
         quantity = p["quantity"]
         cbm = p["cbm"]
-        goods_type = p["goods_type"]
+        goods_type = p.get("goods_type", "NORMAL")
 
         total_cbm_item = (cbm * quantity).quantize(Decimal("0.001"))
+
         rate = get_rate(total_cbm_item, goods_type)
+        line_total = (total_cbm_item * rate).quantize(Decimal("0.01"))
         amount = calc_line_amount(total_cbm_item, goods_type)
 
         total_cbm += total_cbm_item
@@ -197,19 +208,29 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
         c.drawString(col_positions[1] + 5, y - 0.22 * inch, str(quantity))
         c.drawString(col_positions[2] + 5, y - 0.22 * inch, str(total_cbm_item))
 
-        # CLEAN GOODS TYPE DISPLAY
-        c.drawString(col_positions[3] + 5, y - 0.22 * inch,
-                     goods_type.capitalize())
-
+        c.drawRightString(col_positions[4] - 5,
+                          y - 0.22 * inch, f"${line_total:.2f}")
         c.drawRightString(col_positions[5] - 5,
-                          y - 0.22 * inch, f"${rate:.2f}")
-        c.drawRightString(col_positions[6] - 5,
                           y - 0.22 * inch, money(amount))
 
         c.line(table_left, y - row_height,
                table_right, y - row_height)
 
         y -= row_height
+
+    # ===============================
+    # FINAL BORDER
+    # ===============================
+    table_bottom = y
+    c.rect(
+        table_left,
+        table_bottom,
+        table_right - table_left,
+        table_top - table_bottom
+    )
+
+    for x in col_positions[1:-1]:
+        c.line(x, table_bottom, x, table_top)
 
     # ===============================
     # TOTALS
@@ -222,13 +243,13 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
     c.drawString(
         table_left,
         y,
-        f"Total CBM: {total_cbm.quantize(Decimal('0.001'))}"
+        f"Total CBM {total_cbm.quantize(Decimal('0.001'))}"
     )
 
     c.drawRightString(
         table_right,
         y,
-        f"Total: {money(total_amount)}"
+        f"Total {money(total_amount)}"
     )
 
     c.setFillColorRGB(0, 0, 0)
@@ -238,7 +259,7 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
     c.drawString(
         table_left,
         y,
-        f"Estimated Arrival: {eta_date.strftime('%d %B, %Y')}"
+        f"Estimated Arrival Date: {eta_date.strftime('%d %B, %Y')}"
     )
 
     y -= 0.5 * inch
@@ -247,7 +268,23 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
     c.drawString(
         table_left,
         y,
-        "Minimum CBM: 0.005 | Minimum Charge: $2"
+        "Note: Minimum CBM is 0.005 | Minimum Charge is $2"
+    )
+
+    c.setFillColorRGB(0, 0, 0)
+    y -= 0.5 * inch
+
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(
+        table_left,
+        y,
+        "Please note, shipping fee will only be paid when your goods arrives in our"
+    )
+    y -= 0.25 * inch
+    c.drawString(
+        table_left,
+        y,
+        "Ghana warehouse and scheduled for delivery or pick up. CEDIS ONLY."
     )
 
     c.showPage()
