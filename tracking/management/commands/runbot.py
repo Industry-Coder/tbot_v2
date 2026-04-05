@@ -24,9 +24,6 @@ logger = logging.getLogger(__name__)
 USER_STATE = {}
 
 
-# ===============================
-# MENU KEYBOARD
-# ===============================
 def main_menu_keyboard():
     keyboard = [
         ["📦 Track"],
@@ -35,9 +32,6 @@ def main_menu_keyboard():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
-# ===============================
-# SHOW MENU
-# ===============================
 async def show_menu(update: Update):
     USER_STATE.pop(update.effective_chat.id, None)
 
@@ -48,9 +42,6 @@ async def show_menu(update: Update):
     )
 
 
-# ===============================
-# MAIN HANDLER
-# ===============================
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     text = update.message.text.strip()
@@ -113,13 +104,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         start_date = invoice_date
-        end_date = invoice_date + timedelta(days=5)
+        end_date = start_date + timedelta(days=4)  # ✅ FIXED
 
+        # ✅ FIXED QUERY
         packages = await sync_to_async(list)(
             Package.objects.filter(
                 customer_phone=phone,
-                date_received__range=(start_date, end_date)
-            )
+                date_received__date__range=(start_date, end_date)
+            ).order_by("date_received")
         )
 
         if not packages:
@@ -186,16 +178,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await show_menu(update)
 
 
-# ===============================
-# RESET TELEGRAM SESSION (🔥 FIX)
-# ===============================
 async def reset_bot(application):
     await application.bot.delete_webhook(drop_pending_updates=True)
 
 
-# ===============================
-# DJANGO COMMAND
-# ===============================
 class Command(BaseCommand):
     help = "Run Payless Telegram Bot"
 
@@ -211,7 +197,6 @@ class Command(BaseCommand):
 
         app = ApplicationBuilder().token(token).build()
 
-        # 🔥 FIX: always reset previous sessions
         app.post_init = reset_bot
 
         app.add_handler(
