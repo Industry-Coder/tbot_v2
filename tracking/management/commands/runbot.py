@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from decimal import Decimal
 from dotenv import load_dotenv
 
@@ -103,14 +103,19 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
+        # ✅ CORRECT 5-DAY WINDOW
         start_date = invoice_date
-        end_date = start_date + timedelta(days=4)  # ✅ FIXED
+        end_date = start_date + timedelta(days=4)
 
-        # ✅ FIXED QUERY
+        # ✅ CORRECT QUERY (FIXED PROPERLY)
+        start_datetime = datetime.combine(start_date, time.min)
+        end_datetime = datetime.combine(end_date, time.max)
+
         packages = await sync_to_async(list)(
             Package.objects.filter(
                 customer_phone=phone,
-                date_received__date__range=(start_date, end_date)
+                date_received__gte=start_datetime,
+                date_received__lte=end_datetime
             ).order_by("date_received")
         )
 
