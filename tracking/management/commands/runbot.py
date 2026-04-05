@@ -46,17 +46,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     text = update.message.text.strip()
 
-    # ==========================
-    # TRACK BUTTON
-    # ==========================
     if text == "📦 Track":
         USER_STATE[chat_id] = "TRACK"
         await update.message.reply_text("Please send the tracking number.")
         return
 
-    # ==========================
-    # GENERATE INVOICE BUTTON
-    # ==========================
     if text == "🧾 Generate Invoice":
         USER_STATE[chat_id] = "INVOICE"
         await update.message.reply_text(
@@ -109,15 +103,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # ✅ KEEP ORIGINAL DATE LOGIC (DO NOT CHANGE)
+        # KEEP YOUR ORIGINAL LOGIC
         start_date = invoice_date
         end_date = invoice_date + timedelta(days=5)
 
+        # 🔥 FIXED QUERY
         packages = await sync_to_async(list)(
             Package.objects.filter(
                 customer_phone=phone,
-                date_received__range=(start_date, end_date)
-            )
+                date_received__gte=start_date,
+                date_received__lte=end_date
+            ).order_by("date_received", "id")
         )
 
         if not packages:
@@ -157,13 +153,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 amount=pkg.final_amount(),
             )
 
-        # ✅ FIXED FOR NEW INVOICE SYSTEM
         package_dicts = [
             {
                 "tracking_number": pkg.tracking_number,
                 "quantity": pkg.quantity,
-                "cbm": pkg.cbm,              # per unit CBM
-                "goods_type": pkg.goods_type,  # NEW FIELD
+                "cbm": pkg.cbm,
+                "goods_type": pkg.goods_type,
             }
             for pkg in packages
         ]
