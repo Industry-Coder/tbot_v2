@@ -86,6 +86,7 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
         y_header = height - 1.2 * inch
 
         c.setFont("Helvetica-Bold", 16)
+        c.setFillColorRGB(0, 0, 0)
         c.drawString(1 * inch, y_header, "PAYLESS LOGISTICS")
 
         logo_path = os.path.join(
@@ -122,6 +123,7 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
             stroke=0
         )
 
+        c.setFillColorRGB(0, 0, 0)
         c.setFont("Helvetica-Bold", 12)
 
         headers = [
@@ -147,7 +149,9 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
     draw_watermark()
     y = draw_page_header()
 
+    c.setFillColorRGB(0, 0, 0)
     c.setFont("Helvetica-Bold", 12)
+
     c.drawString(
         table_left,
         y,
@@ -164,6 +168,8 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
 
     y = draw_table_header(y)
     table_top = y + row_height
+
+    c.setFillColorRGB(0, 0, 0)
     c.setFont("Helvetica", 10)
 
     # ===============================
@@ -172,7 +178,6 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
     for p in packages:
 
         if y < bottom_margin:
-            # Draw table border before new page
             table_bottom = y
             c.rect(
                 table_left,
@@ -188,6 +193,9 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
             y = draw_page_header()
             y = draw_table_header(y)
             table_top = y + row_height
+
+            # 🔥 CRITICAL FIX
+            c.setFillColorRGB(0, 0, 0)
             c.setFont("Helvetica", 10)
 
         tracking = p["tracking_number"]
@@ -203,6 +211,9 @@ def generate_invoice(invoice, start_date, packages, transit_days=50):
 
         total_cbm += total_cbm_item
         total_amount += amount
+
+        # 🔥 CRITICAL FIX
+        c.setFillColorRGB(0, 0, 0)
 
         c.drawString(col_positions[0] + 5, y - 0.22 * inch, str(tracking))
         c.drawString(col_positions[1] + 5, y - 0.22 * inch, str(quantity))
