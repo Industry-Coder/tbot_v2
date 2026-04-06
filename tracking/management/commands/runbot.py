@@ -103,16 +103,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # KEEP YOUR ORIGINAL LOGIC
+        # KEEP YOUR ORIGINAL LOGIC (but fix internally)
         start_date = invoice_date
         end_date = invoice_date + timedelta(days=5)
 
-        # 🔥 FIXED QUERY
+        # 🔥 REAL FIX (STRICT FILTER)
         packages = await sync_to_async(list)(
             Package.objects.filter(
                 customer_phone=phone,
                 date_received__gte=start_date,
-                date_received__lte=end_date
+                date_received__lt=end_date  # important (prevents overlap)
             ).order_by("date_received", "id")
         )
 
